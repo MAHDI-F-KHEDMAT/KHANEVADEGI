@@ -10,6 +10,7 @@ import socket
 import time
 import random
 import statistics 
+import sys # برای چاپ نوار پیشرفت
 from typing import List, Dict, Tuple, Optional, Set, Union 
 
 # --- Global Constants & Variables ---
@@ -85,6 +86,25 @@ def safe_print(message: str) -> None:
     with threading.Lock(): 
         print(message)
 
+def print_progress(iteration: int, total: int, prefix: str = '', suffix: str = '', bar_length: int = 50) -> None:
+    """
+    Call in a loop to create a progress bar in the console.
+    @param iteration: current iteration (int)
+    @param total: total iterations (int)
+    @param prefix: string prefix (str)
+    @param suffix: string suffix (str)
+    @param bar_length: character length of bar (int)
+    """
+    with PRINT_LOCK: # از همان قفل برای چاپ پیشرفت نیز استفاده می‌شود.
+        percent = ("{0:.1f}").format(100 * (iteration / float(total)))
+        filled_length = int(bar_length * iteration // total)
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        # استفاده از \r برای برگشت به اول خط و بازنویسی (برای GitHub Actions هم کار می‌کند)
+        sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
+        sys.stdout.flush() # اطمینان از چاپ فوری
+        if iteration == total: 
+            sys.stdout.write('\n') # خط جدید در پایان
+
 def parse_vless_config(config_str: str) -> Optional[Dict[str, Union[str, int]]]:
     """
     Parses a VLESS Reality config string and returns its key components.
@@ -125,15 +145,15 @@ def is_base64_content(s: str) -> bool:
 
 def fetch_subscription_content(url: str) -> Optional[str]:
     """Fetches content from a given URL with retry logic."""
-    retries = 1 # اینجا تعداد تلاش‌ها به 1 کاهش یافته است.
+    retries = 1 
     for attempt in range(retries):
         try:
             response = requests.get(url, timeout=REQUEST_TIMEOUT, headers={'User-Agent': 'Mozilla/5.0'})
             response.raise_for_status() 
             return response.text.strip()
         except requests.RequestException as e:
-            safe_print(f"❌ خطای دریافت از {url} (تلاش {attempt + 1}/{retries}): {e}")
-            # نیازی به time.sleep نیست چون فقط 1 تلاش انجام می‌شود.
+            # safe_print(f"❌ خطای دریافت از {url} (تلاش {attempt + 1}/{retries}): {e}") # حذف شد برای کاهش لاگ
+            pass # هیچ پیامی چاپ نمی‌شود، فقط خطا نادیده گرفته می‌شود.
     return None
 
 def process_subscription_content(content: str, source_url: str) -> List[Dict[str, Union[str, int]]]:
@@ -145,7 +165,7 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
         try:
             content = base64.b64decode(content).decode('utf-8')
         except (base64.binascii.Error, UnicodeDecodeError) as e:
-            safe_print(f"⚠️ خطای دیکد Base64 برای {source_url}: {e}") # این هشدار برای دیکد بیس64 باقی می‌ماند
+            safe_print(f"⚠️ خطای دیکد Base64 برای {source_url}: {e}") 
             return []
     
     valid_configs: List[Dict[str, Union[str, int]]] = []
@@ -165,15 +185,17 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
                 if identifier not in SEEN_IDENTIFIERS:
                     SEEN_IDENTIFIERS.add(identifier)
                     valid_configs.append(parsed_data) 
-            # else: # این بخش کاملاً حذف شده تا هشدارها چاپ نشوند.
-                # safe_print(f"⚠️ کانفیگ نامعتبر یا غیرقابل پارس شدن از {source_url} (صرف‌نظر): {line[:100]}...") 
+            # (حذف پیام هشدار برای کانفیگ‌های نامعتبر یا غیرقابل پارس شدن)
     return valid_configs
 
 def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
     """Gathers unique VLESS Reality configurations from a list of subscription links."""
-    safe_print("🚀 در حال دریافت کانفیگ‌ها از منابع...")
+    safe_print("🚀 مرحله ۱/۳: در حال دریافت کانفیگ‌ها از منابع...")
     all_configs: List[Dict[str, Union[str, int]]] = []
     
+    total_links = len(links)
+    fetched_count = 0
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(fetch_subscription_content, url): url for url in links}
         
@@ -183,7 +205,9 @@ def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
             if content:
                 configs = process_subscription_content(content, url)
                 all_configs.extend(configs)
-            safe_print(f"🔗 {i+1}/{len(links)} URL پردازش شد.")
+            
+            fetched_count += 1
+            print_progress(fetched_count, total_links, prefix='دریافت لینک‌ها:', suffix='تکمیل شد')
     
     safe_print(f"\n✨ مجموع کانفیگ‌های Reality یکتا جمع‌آوری شده: {len(all_configs)}")
     return all_configs
@@ -207,7 +231,7 @@ def quick_tcp_check(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Un
         return config
     return None
 
-def measure_quality_metrics(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Union[str, int, float]]]:
+def measure_quality_metrics(config: Dict[str, Union[str, int]) -> Optional[Dict[str, Union[str, int, float]]]:
     """
     Measures average latency and jitter for a given config with multiple TCP tests.
     Performs outlier removal before calculating metrics.
@@ -256,15 +280,18 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
     using a two-stage process (quick check then detailed evaluation).
     Returns them sorted by quality (Jitter primary, Latency secondary).
     """
-    safe_print("\n🔍 مرحله ۱: انجام تست سریع TCP (Fast Fail) برای کانفیگ‌ها...")
+    safe_print("\n🔍 مرحله ۲/۳: انجام تست سریع TCP (Fast Fail) برای کانفیگ‌ها...")
     
     configs_to_process = configs[:MAX_CONFIGS_TO_TEST]
     passed_quick_check_configs: List[Dict[str, Union[str, int]]] = []
     
     max_concurrent_workers = min(32, os.cpu_count() + 4 if os.cpu_count() else 4)
-    safe_print(f"🔧 استفاده از {max_concurrent_workers} ترد برای تست همزمان.")
+    # safe_print(f"🔧 استفاده از {max_concurrent_workers} ترد برای تست همزمان.") # این پیام هم حذف شد تا درصد رو بهتر ببینید.
 
     # --- مرحله ۱: تست سریع ---
+    total_quick_checks = len(configs_to_process)
+    quick_checked_count = 0
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor: 
         futures = {
             executor.submit(quick_tcp_check, cfg): cfg 
@@ -276,18 +303,21 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
             
             if result_config:
                 passed_quick_check_configs.append(result_config)
-                # safe_print(f"✅ {i+1}/{len(configs_to_process)} - {result_config['server']}:{result_config['port']} - تست سریع موفق.")
-            # else:
-                # safe_print(f"❌ {i+1}/{len(configs_to_process)} - {futures[future]['server']}:{futures[future]['port']} - تست سریع ناموفق (حذف شد).")
+            
+            quick_checked_count += 1
+            print_progress(quick_checked_count, total_quick_checks, prefix='تست سریع:', suffix='تکمیل شد')
     
     safe_print(f"\n✅ {len(passed_quick_check_configs)} کانفیگ تست سریع را با موفقیت گذراندند.")
     if not passed_quick_check_configs:
         return []
 
-    safe_print("\n🔍 مرحله ۲: انجام تست کیفیت کامل (TCP Ping & Jitter) برای کانفیگ‌های سالم...")
+    safe_print("\n🔍 مرحله ۳/۳: انجام تست کیفیت کامل (TCP Ping & Jitter) برای کانفیگ‌های سالم...")
     evaluated_configs_with_quality: List[Dict[str, Union[str, int, float]]] = []
 
     # --- مرحله ۲: تست کامل ---
+    total_full_checks = len(passed_quick_check_configs)
+    full_checked_count = 0
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor: 
         futures = {
             executor.submit(measure_quality_metrics, cfg): cfg 
@@ -299,9 +329,12 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
             
             if result_config:
                 evaluated_configs_with_quality.append(result_config)
-                safe_print(f"📈 {i+1}/{len(passed_quick_check_configs)} - {result_config['server']}:{result_config['port']} - تاخیر: {result_config['latency_ms']:.2f}ms, جیتر: {result_config['jitter_ms']:.2f}ms")
-            else:
-                safe_print(f"❌ {i+1}/{len(passed_quick_check_configs)} - {futures[future]['server']}:{futures[future]['port']} - تست کیفیت کامل ناموفق (حذف شد).")
+                # safe_print(f"📈 {i+1}/{len(passed_quick_check_configs)} - {result_config['server']}:{result_config['port']} - تاخیر: {result_config['latency_ms']:.2f}ms, جیتر: {result_config['jitter_ms']:.2f}ms") # این پیام هم برای کاهش لاگ حذف شد
+            # else:
+                # safe_print(f"❌ {i+1}/{len(passed_quick_check_configs)} - {futures[future]['server']}:{futures[future]['port']} - تست کیفیت کامل ناموفق (حذف شد).") # این پیام هم برای کاهش لاگ حذف شد
+
+            full_checked_count += 1
+            print_progress(full_checked_count, total_full_checks, prefix='تست کامل:', suffix='تکمیل شد')
     
     safe_print(f"\n✅ {len(evaluated_configs_with_quality)} کانفیگ تست کیفیت کامل را با موفقیت گذراندند.")
 
@@ -358,8 +391,8 @@ def save_results_base64(configs: List[Dict[str, Union[str, int, float]]]) -> Non
 def main() -> None:
     """Main function to orchestrate fetching, testing, and saving VLESS Reality configurations."""
     import logging
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s') 
-
+    # logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s') # این خط دیگر نیازی نیست
+    
     start_time = time.time()
     
     all_unique_configs = gather_configurations(CONFIG_URLS)
