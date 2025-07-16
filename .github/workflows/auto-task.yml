@@ -1,0 +1,37 @@
+name: Automated Data Processing # نام ورکفلو شما که در GitHub Actions نمایش داده می‌شود (تغییر یافته)
+
+on:
+  workflow_dispatch: 
+  schedule:
+    - cron: '0 */6 * * *' 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest 
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
+    - name: Run Data Processor # نام مرحله را هم تغییر دادیم
+      run: |
+        python processor.py # اسم فایل پایتون شما (تغییر یافته)
+
+    - name: Commit and Push changes
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_user_name: GitHub Actions Bot
+        commit_user_email: actions@github.com
+        commit_author: GitHub Actions Bot <actions@github.com>
+        commit_message: "Auto-update: Data processing results" # پیام کامیت عمومی‌تر
+        file_pattern: 'data/*.txt' # فقط فایل‌های متنی در پوشه data را کامیت می‌کند (تغییر یافته)
