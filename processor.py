@@ -16,9 +16,12 @@ from typing import List, Dict, Tuple, Optional, Set, Union
 
 PRINT_LOCK = threading.Lock() 
 
-# مسیر دایرکتوری خروجی
-OUTPUT_DIR = "data" # تغییر یافته
+# مسیر دایرکتوری خروجی: تنظیم شده روی "data"
+OUTPUT_DIR = "data" 
 
+# لیست URLهای سابسکریپشن
+# اگر GitHub Pages را فعال کرده‌اید، می‌توانید لینک خود را اینجا اضافه کنید.
+# مثال: "https://YOUR-USERNAME.github.io/KHANEVADEGI/data/khanevadeh_base64.txt"
 CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/PlanAsli/configs-collector-v2ray/refs/heads/main/sub/protocols/vless.txt",
     "https://raw.githubusercontent.com/itsyebekhe/PSG/main/subscriptions/xray/base64/mix",
@@ -33,20 +36,25 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/MRT-project/v2ray-configs/refs/heads/main/AllConfigsSub.txt",
     "https://raw.githubusercontent.com/Kolandone/v2raycollector/refs/heads/main/vless.txt",
     "https://raw.githubusercontent.com/Leon406/SubCrawler/refs/heads/main/sub/share/vless",
-    "https://raw.githubusercontent.com/xyfqzy/free-nodes/refs/heads/main/nodes/vless.txt"
+    "https://raw.githubusercontent.com/xyfqzy/free-nodes/refs/heads/main/nodes/vless.txt",
 ]
 
-# نام فایل خروجی برای ذخیره کانفیگ‌های نهایی (با قابلیت تنظیم از متغیر محیطی)
-OUTPUT_FILENAME: str = os.getenv("REALITY_OUTPUT_FILENAME", "reality-sub") + "_base64.txt"
+# نام فایل خروجی برای ذخیره کانفیگ‌های نهایی: تنظیم شده روی "khanevadeh_base64.txt"
+OUTPUT_FILENAME: str = os.getenv("REALITY_OUTPUT_FILENAME", "khanevadeh") + "_base64.txt"
 
+# زمان‌بندی‌ها و تعداد تست‌ها
 REQUEST_TIMEOUT: int = 15 
-TCP_CONNECT_TIMEOUT: int = 5 
-NUM_TCP_TESTS: int = 11 
-MIN_SUCCESSFUL_TESTS_RATIO: float = 0.7 
+TCP_CONNECT_TIMEOUT: int = 5 # تایم‌اوت برای تست‌های کامل TCP
+NUM_TCP_TESTS: int = 11 # تعداد دفعات تست TCP برای مرحله کامل
+MIN_SUCCESSFUL_TESTS_RATIO: float = 0.7 # حداقل درصد تست‌های موفق برای مرحله کامل
 
-MAX_CONFIGS_TO_TEST: int = 10000 # تغییر یافته
-FINAL_MAX_OUTPUT_CONFIGS: int = 500 # تغییر یافته
+QUICK_CHECK_TIMEOUT: int = 2 # تایم‌اوت برای تست اولیه سریع (Fast Fail)
 
+# محدودیت‌های تعداد کانفیگ‌ها
+MAX_CONFIGS_TO_TEST: int = 10000 
+FINAL_MAX_OUTPUT_CONFIGS: int = 500 
+
+# الگوهای Regex برای شناسایی و پارس کردن کانفیگ‌ها
 VLESS_REALITY_PATTERN: re.Pattern = re.compile(r'(vless://[^\s]+)', re.IGNORECASE)
 SECURITY_KEYWORD: str = 'security=reality'  
 
@@ -79,8 +87,8 @@ def safe_print(message: str) -> None:
 
 def parse_vless_config(config_str: str) -> Optional[Dict[str, Union[str, int]]]:
     """
-    یک رشته کانفیگ VLESS Reality را پارس کرده و مؤلفه‌های کلیدی آن را برمی‌گرداند.
-    در صورت عدم تطابق با الگو یا عدم وجود اجزای ضروری، None برمی‌گرداند.
+    Parses a VLESS Reality config string and returns its key components.
+    Returns None if the string does not match the pattern or essential components are missing.
     """
     match = VLESS_PARSE_PATTERN.match(config_str)
     
@@ -183,7 +191,7 @@ def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
 
 # --- توابع تست کیفیت (Quality Testing Functions) ---
 
-def test_tcp_latency(host: str, port: int, timeout: int = TCP_CONNECT_TIMEOUT) -> Optional[float]:
+def test_tcp_latency(host: str, port: int, timeout: int) -> Optional[float]:
     """Tests a TCP connection to host:port and returns latency in ms if successful."""
     start_time = time.perf_counter()
     try:
@@ -191,6 +199,14 @@ def test_tcp_latency(host: str, port: int, timeout: int = TCP_CONNECT_TIMEOUT) -
             return (time.perf_counter() - start_time) * 1000 
     except Exception: 
         return None
+
+def quick_tcp_check(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Union[str, int]]]:
+    """Performs a single, quick TCP check. Returns the config if successful, None otherwise."""
+    host = str(config['server'])
+    port = int(config['port'])
+    if test_tcp_latency(host, port, QUICK_CHECK_TIMEOUT) is not None:
+        return config
+    return None
 
 def measure_quality_metrics(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Union[str, int, float]]]:
     """
@@ -203,7 +219,7 @@ def measure_quality_metrics(config: Dict[str, Union[str, int]]) -> Optional[Dict
 
     latencies: List[float] = []
     for _ in range(NUM_TCP_TESTS):
-        latency = test_tcp_latency(host, port)
+        latency = test_tcp_latency(host, port, TCP_CONNECT_TIMEOUT)
         if latency is not None:
             latencies.append(latency)
         time.sleep(0.1 + random.random() * 0.1) 
@@ -238,19 +254,21 @@ def measure_quality_metrics(config: Dict[str, Union[str, int]]) -> Optional[Dict
 def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List[Dict[str, Union[str, int, float]]]:
     """
     Evaluates connection quality (latency and jitter) for a subset of configurations
-    and returns them sorted by quality (Jitter primary, Latency secondary).
+    using a two-stage process (quick check then detailed evaluation).
+    Returns them sorted by quality (Jitter primary, Latency secondary).
     """
-    safe_print("\n🔍 در حال انجام تست کیفیت (TCP Ping & Jitter) برای کانفیگ‌ها...")
+    safe_print("\n🔍 مرحله ۱: انجام تست سریع TCP (Fast Fail) برای کانفیگ‌ها...")
     
     configs_to_process = configs[:MAX_CONFIGS_TO_TEST]
-    evaluated_configs_with_quality: List[Dict[str, Union[str, int, float]]] = []
+    passed_quick_check_configs: List[Dict[str, Union[str, int]]] = []
     
     max_concurrent_workers = min(32, os.cpu_count() + 4 if os.cpu_count() else 4)
     safe_print(f"🔧 استفاده از {max_concurrent_workers} ترد برای تست همزمان.")
 
+    # --- مرحله ۱: تست سریع ---
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor: 
         futures = {
-            executor.submit(measure_quality_metrics, cfg): cfg 
+            executor.submit(quick_tcp_check, cfg): cfg 
             for cfg in configs_to_process
         }
         
@@ -258,12 +276,35 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
             result_config = future.result()
             
             if result_config:
-                evaluated_configs_with_quality.append(result_config)
-                safe_print(f"📈 {i+1}/{len(configs_to_process)} - {result_config['server']}:{result_config['port']} - تاخیر: {result_config['latency_ms']:.2f}ms, جیتر: {result_config['jitter_ms']:.2f}ms")
-            else:
-                safe_print(f"❌ {i+1}/{len(configs_to_process)} - {futures[future]['server']}:{futures[future]['port']} - تست کیفیت ناموفق (حذف شد).")
+                passed_quick_check_configs.append(result_config)
+                # safe_print(f"✅ {i+1}/{len(configs_to_process)} - {result_config['server']}:{result_config['port']} - تست سریع موفق.")
+            # else:
+                # safe_print(f"❌ {i+1}/{len(configs_to_process)} - {futures[future]['server']}:{futures[future]['port']} - تست سریع ناموفق (حذف شد).")
     
-    safe_print(f"\n✅ {len(evaluated_configs_with_quality)} کانفیگ تست کیفیت را با موفقیت گذراندند.")
+    safe_print(f"\n✅ {len(passed_quick_check_configs)} کانفیگ تست سریع را با موفقیت گذراندند.")
+    if not passed_quick_check_configs:
+        return []
+
+    safe_print("\n🔍 مرحله ۲: انجام تست کیفیت کامل (TCP Ping & Jitter) برای کانفیگ‌های سالم...")
+    evaluated_configs_with_quality: List[Dict[str, Union[str, int, float]]] = []
+
+    # --- مرحله ۲: تست کامل ---
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor: 
+        futures = {
+            executor.submit(measure_quality_metrics, cfg): cfg 
+            for cfg in passed_quick_check_configs
+        }
+        
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            result_config = future.result()
+            
+            if result_config:
+                evaluated_configs_with_quality.append(result_config)
+                safe_print(f"📈 {i+1}/{len(passed_quick_check_configs)} - {result_config['server']}:{result_config['port']} - تاخیر: {result_config['latency_ms']:.2f}ms, جیتر: {result_config['jitter_ms']:.2f}ms")
+            else:
+                safe_print(f"❌ {i+1}/{len(passed_quick_check_configs)} - {futures[future]['server']}:{futures[future]['port']} - تست کیفیت کامل ناموفق (حذف شد).")
+    
+    safe_print(f"\n✅ {len(evaluated_configs_with_quality)} کانفیگ تست کیفیت کامل را با موفقیت گذراندند.")
 
     evaluated_configs_with_quality.sort(key=lambda x: (x['jitter_ms'], x['latency_ms']))
     
@@ -281,11 +322,9 @@ def save_results_base64(configs: List[Dict[str, Union[str, int, float]]]) -> Non
     for i, cfg in enumerate(top_configs, start=1):
         config_without_comment = re.sub(r'#.*$', '', str(cfg['original_config'])).strip()
         
-        # --- اینجا تغییر اصلی اعمال شده است ---
         # اضافه کردن تنها یک شماره یکتا به عنوان نام کانفیگ
         numbered_config = f"{config_without_comment}#{i}"
-        # --- پایان تغییر ---
-
+        
         final_configs_list.append(numbered_config)
     
     subscription_text: str = "\n".join(final_configs_list)
@@ -305,7 +344,6 @@ def save_results_base64(configs: List[Dict[str, Union[str, int, float]]]) -> Non
             f.write(base64_sub)
         safe_print(f"\n🎉 {len(top_configs)} کانفیگ با شماره‌گذاری یکتا در قالب سابسکریپشن Base64 ذخیره شد: {output_path}")
         
-        # نمایش اطلاعات 5 کانفیگ برتر برای لاگ
         safe_print(f"🏆 5 کانفیگ برتر (فقط برای نمایش در لاگ):")
         for i, cfg in enumerate(top_configs[:5], start=1):
             safe_print(
