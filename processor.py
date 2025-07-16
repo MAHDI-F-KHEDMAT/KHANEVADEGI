@@ -28,7 +28,7 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/Protocols/vless.txt",
     "https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/refs/heads/main/configs/Vless.txt",
     "https://www.v2nodes.com/subscriptions/country/all/?key=F225BC16D80D287",
-    "https://raw.githubusercontent.com/T3stAcc/V2Ray/refs/heads/main/AllConfigsSub.txt",
+    # "https://raw.githubusercontent.com/T3stAcc/V2Ray/refs/heads/main/AllConfigsSub.txt", # این لینک به دلیل 404 یا مشکلات پارس شدن حذف یا کامنت شده است.
     "https://raw.githubusercontent.com/Awmiroosen/awmirx-v2ray/refs/heads/main/blob/main/v2-sub.txt",
     "https://raw.githubusercontent.com/gfpcom/free-proxy-list/refs/heads/main/list/vless.txt",
     "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/22.txt",
@@ -125,7 +125,7 @@ def is_base64_content(s: str) -> bool:
 
 def fetch_subscription_content(url: str) -> Optional[str]:
     """Fetches content from a given URL with retry logic."""
-    retries = 1
+    retries = 1 # اینجا تعداد تلاش‌ها به 1 کاهش یافته است.
     for attempt in range(retries):
         try:
             response = requests.get(url, timeout=REQUEST_TIMEOUT, headers={'User-Agent': 'Mozilla/5.0'})
@@ -133,8 +133,7 @@ def fetch_subscription_content(url: str) -> Optional[str]:
             return response.text.strip()
         except requests.RequestException as e:
             safe_print(f"❌ خطای دریافت از {url} (تلاش {attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt) 
+            # نیازی به time.sleep نیست چون فقط 1 تلاش انجام می‌شود.
     return None
 
 def process_subscription_content(content: str, source_url: str) -> List[Dict[str, Union[str, int]]]:
@@ -146,7 +145,7 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
         try:
             content = base64.b64decode(content).decode('utf-8')
         except (base64.binascii.Error, UnicodeDecodeError) as e:
-            safe_print(f"⚠️ خطای دیکد Base64 برای {source_url}: {e}")
+            safe_print(f"⚠️ خطای دیکد Base64 برای {source_url}: {e}") # این هشدار برای دیکد بیس64 باقی می‌ماند
             return []
     
     valid_configs: List[Dict[str, Union[str, int]]] = []
@@ -166,8 +165,8 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
                 if identifier not in SEEN_IDENTIFIERS:
                     SEEN_IDENTIFIERS.add(identifier)
                     valid_configs.append(parsed_data) 
-            else:
-                safe_print(f"⚠️ کانفیگ نامعتبر یا غیرقابل پارس شدن از {source_url} (صرف‌نظر): {line[:100]}...")
+            # else: # این بخش کاملاً حذف شده تا هشدارها چاپ نشوند.
+                # safe_print(f"⚠️ کانفیگ نامعتبر یا غیرقابل پارس شدن از {source_url} (صرف‌نظر): {line[:100]}...") 
     return valid_configs
 
 def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
