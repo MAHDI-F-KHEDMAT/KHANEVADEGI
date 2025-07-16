@@ -95,15 +95,14 @@ def print_progress(iteration: int, total: int, prefix: str = '', suffix: str = '
     @param suffix: string suffix (str)
     @param bar_length: character length of bar (int)
     """
-    with PRINT_LOCK: # از همان قفل برای چاپ پیشرفت نیز استفاده می‌شود.
+    with PRINT_LOCK: 
         percent = ("{0:.1f}").format(100 * (iteration / float(total)))
         filled_length = int(bar_length * iteration // total)
         bar = '█' * filled_length + '-' * (bar_length - filled_length)
-        # استفاده از \r برای برگشت به اول خط و بازنویسی (برای GitHub Actions هم کار می‌کند)
         sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
-        sys.stdout.flush() # اطمینان از چاپ فوری
+        sys.stdout.flush() 
         if iteration == total: 
-            sys.stdout.write('\n') # خط جدید در پایان
+            sys.stdout.write('\n') 
 
 def parse_vless_config(config_str: str) -> Optional[Dict[str, Union[str, int]]]:
     """
@@ -152,7 +151,6 @@ def fetch_subscription_content(url: str) -> Optional[str]:
             response.raise_for_status() 
             return response.text.strip()
         except requests.RequestException as e:
-            # safe_print(f"❌ خطای دریافت از {url} (تلاش {attempt + 1}/{retries}): {e}") # حذف شد برای کاهش لاگ
             pass # هیچ پیامی چاپ نمی‌شود، فقط خطا نادیده گرفته می‌شود.
     return None
 
@@ -185,17 +183,15 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
                 if identifier not in SEEN_IDENTIFIERS:
                     SEEN_IDENTIFIERS.add(identifier)
                     valid_configs.append(parsed_data) 
-            # (حذف پیام هشدار برای کانفیگ‌های نامعتبر یا غیرقابل پارس شدن)
     return valid_configs
 
 def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
     """Gathers unique VLESS Reality configurations from a list of subscription links."""
-    safe_print("🚀 مرحله ۱/۳: در حال دریافت کانفیگ‌ها از منابع...")
+    safe_print("🚀 مرحله ۱/۳: در حال دریافت و پردازش کانفیگ‌ها از منابع...")
     all_configs: List[Dict[str, Union[str, int]]] = []
     
     total_links = len(links)
-    fetched_count = 0
-
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(fetch_subscription_content, url): url for url in links}
         
@@ -206,8 +202,8 @@ def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
                 configs = process_subscription_content(content, url)
                 all_configs.extend(configs)
             
-            fetched_count += 1
-            print_progress(fetched_count, total_links, prefix='دریافت لینک‌ها:', suffix='تکمیل شد')
+            # اینجا فقط یک نوار پیشرفت کلی برای این مرحله نمایش داده می شود
+            print_progress(i + 1, total_links, prefix='پیشرفت دریافت و پردازش:', suffix='تکمیل شد')
     
     safe_print(f"\n✨ مجموع کانفیگ‌های Reality یکتا جمع‌آوری شده: {len(all_configs)}")
     return all_configs
@@ -286,7 +282,6 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
     passed_quick_check_configs: List[Dict[str, Union[str, int]]] = []
     
     max_concurrent_workers = min(32, os.cpu_count() + 4 if os.cpu_count() else 4)
-    # safe_print(f"🔧 استفاده از {max_concurrent_workers} ترد برای تست همزمان.") # این پیام هم حذف شد تا درصد رو بهتر ببینید.
 
     # --- مرحله ۱: تست سریع ---
     total_quick_checks = len(configs_to_process)
@@ -305,7 +300,7 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
                 passed_quick_check_configs.append(result_config)
             
             quick_checked_count += 1
-            print_progress(quick_checked_count, total_quick_checks, prefix='تست سریع:', suffix='تکمیل شد')
+            print_progress(quick_checked_count, total_quick_checks, prefix='پیشرفت تست سریع:', suffix='تکمیل شد')
     
     safe_print(f"\n✅ {len(passed_quick_check_configs)} کانفیگ تست سریع را با موفقیت گذراندند.")
     if not passed_quick_check_configs:
@@ -329,12 +324,9 @@ def evaluate_and_sort_configs(configs: List[Dict[str, Union[str, int]]]) -> List
             
             if result_config:
                 evaluated_configs_with_quality.append(result_config)
-                # safe_print(f"📈 {i+1}/{len(passed_quick_check_configs)} - {result_config['server']}:{result_config['port']} - تاخیر: {result_config['latency_ms']:.2f}ms, جیتر: {result_config['jitter_ms']:.2f}ms") # این پیام هم برای کاهش لاگ حذف شد
-            # else:
-                # safe_print(f"❌ {i+1}/{len(passed_quick_check_configs)} - {futures[future]['server']}:{futures[future]['port']} - تست کیفیت کامل ناموفق (حذف شد).") # این پیام هم برای کاهش لاگ حذف شد
 
             full_checked_count += 1
-            print_progress(full_checked_count, total_full_checks, prefix='تست کامل:', suffix='تکمیل شد')
+            print_progress(full_checked_count, total_full_checks, prefix='پیشرفت تست کامل:', suffix='تکمیل شد')
     
     safe_print(f"\n✅ {len(evaluated_configs_with_quality)} کانفیگ تست کیفیت کامل را با موفقیت گذراندند.")
 
@@ -390,9 +382,6 @@ def save_results_base64(configs: List[Dict[str, Union[str, int, float]]]) -> Non
 
 def main() -> None:
     """Main function to orchestrate fetching, testing, and saving VLESS Reality configurations."""
-    import logging
-    # logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s') # این خط دیگر نیازی نیست
-    
     start_time = time.time()
     
     all_unique_configs = gather_configurations(CONFIG_URLS)
