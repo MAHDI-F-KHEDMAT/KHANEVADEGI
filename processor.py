@@ -231,7 +231,7 @@ def quick_tcp_check(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Un
         return config
     return None
 
-def measure_quality_metrics(config: Dict[str, Union[str, int]) -> Optional[Dict[str, Union[str, int, float]]]:
+def measure_quality_metrics(config: Dict[str, Union[str, int]]) -> Optional[Dict[str, Union[str, int, float]]]:
     """
     Measures average latency and jitter for a given config with multiple TCP tests.
     Performs outlier removal before calculating metrics.
