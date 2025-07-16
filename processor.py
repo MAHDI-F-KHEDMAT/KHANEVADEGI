@@ -125,7 +125,7 @@ def is_base64_content(s: str) -> bool:
 
 def fetch_subscription_content(url: str) -> Optional[str]:
     """Fetches content from a given URL with retry logic."""
-    retries = 3
+    retries = 1
     for attempt in range(retries):
         try:
             response = requests.get(url, timeout=REQUEST_TIMEOUT, headers={'User-Agent': 'Mozilla/5.0'})
