@@ -29,7 +29,7 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/Protocols/vless.txt",
     "https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/refs/heads/main/configs/Vless.txt",
     "https://www.v2nodes.com/subscriptions/country/all/?key=F225BC16D80D287",
-    # "https://raw.githubusercontent.com/T3stAcc/V2Ray/refs/heads/main/AllConfigsSub.txt", # این لینک به دلیل 404 یا مشکلات پارس شدن حذف یا کامنت شده است.
+    "https://raw.githubusercontent.com/T3stAcc/V2Ray/refs/heads/main/AllConfigsSub.txt", # این لینک به دلیل 404 یا مشکلات پارس شدن حذف یا کامنت شده است.
     "https://raw.githubusercontent.com/Awmiroosen/awmirx-v2ray/refs/heads/main/blob/main/v2-sub.txt",
     "https://raw.githubusercontent.com/gfpcom/free-proxy-list/refs/heads/main/list/vless.txt",
     "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/22.txt",
