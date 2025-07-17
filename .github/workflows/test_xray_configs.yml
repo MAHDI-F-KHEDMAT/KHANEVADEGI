@@ -35,8 +35,8 @@ jobs:
           curl -L -o xray.zip $XRAY_URL
 
           # Unzip Xray core and essential data files
-          unzip xray.zip xray Xray.dat geoip.dat geosite.dat
-
+          unzip xray.zip xray geoip.dat geosite.dat # Xray.dat حذف شد
+          
           # Move xray binary to a PATH directory and make it executable
           sudo mv xray /usr/local/bin/
           sudo chmod +x /usr/local/bin/xray
