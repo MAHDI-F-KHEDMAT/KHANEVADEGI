@@ -38,7 +38,10 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/Kolandone/v2raycollector/refs/heads/main/vless.txt",
     "https://raw.githubusercontent.com/Leon406/SubCrawler/refs/heads/main/sub/share/vless",
     "https://raw.githubusercontent.com/xyfqzy/free-nodes/refs/heads/main/nodes/vless.txt",
-    "https://raw.githubusercontent.com/MAHDI-F-KHEDMAT/KHANEVADEGI/refs/heads/main/data/khanevadeh_base64.txt"
+    "https://raw.githubusercontent.com/MAHDI-F-KHEDMAT/KHANEVADEGI/refs/heads/main/data/khanevadeh_base64.txt",
+    "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/vless.html",
+    "https://raw.githubusercontent.com/Pasimand/v2ray-config-agg/refs/heads/main/config.txt",
+    
 ]
 
 # نام فایل خروجی برای ذخیره کانفیگ‌های نهایی: تنظیم شده روی "khanevadeh_base64.txt"
@@ -53,7 +56,7 @@ MIN_SUCCESSFUL_TESTS_RATIO: float = 0.7 # حداقل درصد تست‌های م
 QUICK_CHECK_TIMEOUT: int = 2 # تایم‌اوت برای تست اولیه سریع (Fast Fail)
 
 # محدودیت‌های تعداد کانفیگ‌ها
-MAX_CONFIGS_TO_TEST: int = 12000 
+MAX_CONFIGS_TO_TEST: int = 20000 
 FINAL_MAX_OUTPUT_CONFIGS: int = 600 
 
 # الگوهای Regex برای شناسایی و پارس کردن کانفیگ‌ها
