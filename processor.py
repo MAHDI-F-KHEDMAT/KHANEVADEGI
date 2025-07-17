@@ -38,6 +38,7 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/Kolandone/v2raycollector/refs/heads/main/vless.txt",
     "https://raw.githubusercontent.com/Leon406/SubCrawler/refs/heads/main/sub/share/vless",
     "https://raw.githubusercontent.com/xyfqzy/free-nodes/refs/heads/main/nodes/vless.txt",
+    "https://raw.githubusercontent.com/MAHDI-F-KHEDMAT/KHANEVADEGI/refs/heads/main/data/khanevadeh_base64.txt"
 ]
 
 # نام فایل خروجی برای ذخیره کانفیگ‌های نهایی: تنظیم شده روی "khanevadeh_base64.txt"
