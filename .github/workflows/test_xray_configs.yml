@@ -1,8 +1,8 @@
-name: Secure Tunnel Checker # نام جدید ورکفلو دوم
+name: Secure Tunnel Checker # نام ورکفلو دوم شما
 
 on:
   workflow_run:
-    workflows: ["Automated Data Processing"] # <--- این خط اصلاح شد!
+    workflows: ["Automated Data Processing"] # نام دقیق ورکفلو اول شما
     types:
       - completed
     branches:
@@ -34,14 +34,14 @@ jobs:
           echo "Downloading Xray from: ${XRAY_URL}"
           curl -L -o xray.zip $XRAY_URL
 
-          # Unzip Xray core and essential data files (Xray.dat removed from unzip command)
+          # Unzip Xray core and essential data files
           unzip xray.zip xray geoip.dat geosite.dat
           
           # Move xray binary to a PATH directory and make it executable
           sudo mv xray /usr/local/bin/
           sudo chmod +x /usr/local/bin/xray
           
-          # Create Xray data directory and move data files (Xray.dat removed from mv command)
+          # Create Xray data directory and move data files
           sudo mkdir -p /usr/local/share/xray/
           sudo mv geoip.dat geosite.dat /usr/local/share/xray/
           
@@ -68,9 +68,9 @@ jobs:
           PRINT_LOCK = threading.Lock() 
 
           # مسیر فایل ورودی (تولید شده توسط Workflow قبلی)
-          INPUT_CONFIGS_FILE = "data/khanevadeh_base64.txt" # فایل خروجی ورکفلو اول
+          INPUT_CONFIGS_FILE = "data/khanevadeh_base64.txt"
           # مسیر فایل خروجی برای کانفیگ‌های فعال واقعی
-          OUTPUT_WORKING_CONFIGS_FILE = "data/secure_access_list.txt" # اسم فایل خروجی جدید ورکفلو دوم
+          OUTPUT_WORKING_CONFIGS_FILE = "data/secure_access_list.txt"
 
           # حداکثر تعداد کانفیگ‌هایی که می‌خواهیم تست واقعی کنیم (برای مدیریت زمان GitHub Actions)
           MAX_CONFIGS_FOR_REAL_TEST = 100 
@@ -296,7 +296,11 @@ jobs:
                   with open(INPUT_CONFIGS_FILE, 'r', encoding='utf-8') as f:
                       base64_content = f.read().strip()
                   
-                  decoded_content = base64.b64decode(base64_content).decode('utf-8')
+                  # --- کد رفع مشکل پدینگ ---
+                  base64_content_padded = base64_content + '==='[(len(base64_content) % 4):]
+                  decoded_content = base64.b64decode(base64_content_padded).decode('utf-8') 
+                  # --- پایان کد رفع مشکل پدینگ ---
+
                   config_urls = decoded_content.split('\n')
                   safe_print(f"Loaded {len(config_urls)} configs from {INPUT_CONFIGS_FILE}.")
               except Exception as e:
@@ -319,7 +323,7 @@ jobs:
               total_tests = len(configs_to_test)
               tested_count = 0
               
-              max_concurrent_workers = min(os.cpu_count() or 4, 8) # محدود کردن تردها برای پایداری بیشتر Xray
+              max_concurrent_workers = min(os.cpu_count() or 4, 8) 
               safe_print(f"Using {max_concurrent_workers} concurrent workers for real testing.")
 
               with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor:
@@ -345,6 +349,7 @@ jobs:
                       config_str = f"{cfg['original_config']}#Live_{i}_Latency_{cfg['real_latency_ms']:.0f}ms"
                       final_output_list.append(config_str)
 
+                  # توجه: اینجا پدینگ برای خروجی نهایی حذف می‌شود که برای V2RayNG مناسب است
                   subscription_text = "\n".join(final_output_list)
                   base64_output = base64.b64encode(subscription_text.encode('utf-8')).decode('utf-8').replace('=', '')
 
@@ -373,6 +378,6 @@ jobs:
       - name: Commit and Push working configs
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          file_pattern: data/secure_access_list.txt # نام فایل خروجی جدید برای Commit
+          file_pattern: data/secure_access_list.txt 
           commit_message: "Auto-update: Xray real test results"
           # مطمئن شوید که دسترسی Write در Settings -> Actions -> General -> Workflow permissions فعال باشد.
