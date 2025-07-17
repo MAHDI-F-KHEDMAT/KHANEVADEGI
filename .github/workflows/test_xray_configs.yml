@@ -1,21 +1,19 @@
-name: Secure Tunnel Checker # نام ورکفلو دوم شما
+name: Test Xray Configs
 
 on:
   workflow_run:
-    workflows: ["Automated Data Processing"] # نام دقیق ورکفلو اول شما
+    workflows: ["Automated Data Processing"]
     types:
       - completed
-    branches:
-      - main # یا شاخه اصلی ریپازیتوری شما (معمولا main یا master)
-
-  workflow_dispatch: # برای اینکه بتوانید به صورت دستی هم اجرا کنید (اختیاری)
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  test_configs_job:
+  test_configs:
     runs-on: ubuntu-latest
+    needs: [] # Remove dependency if you want to run independently, otherwise keep it as 'needs: [process_data_job]' if that job name is used in process_data.yml
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -23,361 +21,310 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install Xray Core
+      - name: Install Python dependencies
         run: |
-          # Fetch the latest Xray release tag
-          XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | grep -Po '"tag_name": "v\K[^"]*')
-          echo "Latest Xray version: v${XRAY_VERSION}"
+          python -m pip install --upgrade pip
+          pip install requests
 
-          # Download Xray Core for Linux 64-bit
+      - name: Download Xray
+        run: |
+          XRAY_VERSION="1.8.10" # You can change this to the latest stable version if needed
           XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"
-          echo "Downloading Xray from: ${XRAY_URL}"
-          curl -L -o xray.zip $XRAY_URL
+          curl -L ${XRAY_URL} -o xray.zip
+          unzip xray.zip -d xray
+          chmod +x xray/xray
+          echo "XRAY_PATH=$(pwd)/xray/xray" >> $GITHUB_ENV
 
-          # Unzip Xray core and essential data files
-          unzip xray.zip xray geoip.dat geosite.dat
-          
-          # Move xray binary to a PATH directory and make it executable
-          sudo mv xray /usr/local/bin/
-          sudo chmod +x /usr/local/bin/xray
-          
-          # Create Xray data directory and move data files
-          sudo mkdir -p /usr/local/share/xray/
-          sudo mv geoip.dat geosite.dat /usr/local/share/xray/
-          
-          echo "Xray installed successfully. Version:"
-          xray version
-        
-      - name: Create Xray Tester Script (xray_tester.py)
+      - name: Run VLESS Reality config testing
+        env:
+          XRAY_PATH: ${{ env.XRAY_PATH }}
         run: |
+          # Create xray_tester.py directly here
           cat << 'EOF' > xray_tester.py
-          # -- coding: utf-8 --
-          import base64
-          import json
-          import os
-          import re
-          import subprocess
-          import sys
-          import time
-          import threading
-          from typing import List, Dict, Union, Optional
-          import concurrent.futures
+import base64
+import os
+import re
+import subprocess
+import json
+import time
 
-          # --- Global Constants & Variables ---
-          
-          PRINT_LOCK = threading.Lock() 
+def add_base64_padding(data):
+    """Adds padding to a base64 string if necessary."""
+    missing_padding = len(data) % 4
+    if missing_padding:
+        data += '='* (4 - missing_padding)
+    return data
 
-          # مسیر فایل ورودی (تولید شده توسط Workflow قبلی)
-          INPUT_CONFIGS_FILE = "data/khanevadeh_base64.txt"
-          # مسیر فایل خروجی برای کانفیگ‌های فعال واقعی
-          OUTPUT_WORKING_CONFIGS_FILE = "data/secure_access_list.txt"
+def parse_vless_url(url):
+    """Parses a VLESS Reality URL into a dictionary of components."""
+    try:
+        # Decode the URL (if it's base64 encoded, though VLESS URLs usually aren't directly base64)
+        # Assuming the input is a direct VLESS URL, not base64 encoded itself.
+        # However, if it comes from a base64 subscription, it might need decoding first.
+        # For a standard VLESS URL, this initial decode is usually not needed.
+        # Let's assume the input 'url' is already the decoded VLESS string.
 
-          # حداکثر تعداد کانفیگ‌هایی که می‌خواهیم تست واقعی کنیم (برای مدیریت زمان GitHub Actions)
-          MAX_CONFIGS_FOR_REAL_TEST = 100 
-          
-          # پورت داخلی که Xray روی آن پروکسی SOCKS5 ایجاد می‌کند
-          XRAY_LOCAL_SOCKS_PORT = 1080
-          # پورت داخلی که Xray روی آن پروکسی HTTP ایجاد می‌کند (برای curl)
-          XRAY_LOCAL_HTTP_PORT = 1081
+        match = re.match(r"vless://([a-f0-9-]+)@([^:]+):(\d+)\?(.*?)#(.*)", url)
+        if not match:
+            # Try to decode from base64 if direct match fails, common for subscriptions
+            try:
+                decoded_url = base64.b64decode(add_base64_padding(url)).decode('utf-8')
+                match = re.match(r"vless://([a-f0-9-]+)@([^:]+):(\d+)\?(.*?)#(.*)", decoded_url)
+                if not match:
+                    # If it's still not matching after decoding, it might be a malformed URL
+                    return None
+            except Exception as e:
+                # print(f"Could not decode base64 or parse after decode: {e}")
+                return None # Not a valid VLESS URL format
 
-          # زمان‌بندی‌ها
-          XRAY_STARTUP_TIMEOUT = 10 # ثانیه برای شروع Xray
-          TEST_URL_TIMEOUT = 10     # ثانیه برای curl کردن URL تست
-          
-          # URL برای تست اتصال واقعی (توصیه می‌شود یک URL معتبر و عمومی باشد که در ایران فیلتر نیست و از CDN استفاده نمی‌کند)
-          TEST_URL = "https://www.google.com/generate_204"
-
-          VLESS_PARSE_PATTERN: re.Pattern = re.compile(
-              r"vless://"
-              r"(?P<uuid>[a-f0-9-]+)"     
-              r"@"
-              r"(?P<server>[^:]+)"       
-              r":"
-              r"(?P<port>\d+)"           
-              r"\?"                      
-              r"(?:[^&]*&)*"             
-              r"security=reality"        
-              r"(?:[^&]*&)*"             
-              r"pbk=(?P<pbk>[^&]+)"      
-              r"(?:[^&]*&)*"             
-              r"(?:fp=(?P<fp>[^&]+))?"   
-              r"(?:&sni=(?P<sni>[^&]+))?"
-              r"(?:&alpn=(?P<alpn>[^&]+))?"
-              r".*$",                    
-              re.IGNORECASE
-          )
-          
-          def safe_print(message: str) -> None:
-              with PRINT_LOCK:
-                  print(message)
-
-          def print_progress(iteration: int, total: int, prefix: str = '', suffix: str = '', bar_length: int = 50) -> None:
-              with PRINT_LOCK:
-                  percent = ("{0:.1f}").format(100 * (iteration / float(total)))
-                  filled_length = int(bar_length * iteration // total)
-                  bar = '█' * filled_length + '-' * (bar_length - filled_length)
-                  sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
-                  sys.stdout.flush()
-                  if iteration == total:
-                      sys.stdout.write('\n')
-
-          def parse_vless_config(config_str: str) -> Optional[Dict[str, Union[str, int, str]]]:
-              match = VLESS_PARSE_PATTERN.match(config_str)
-              if match:
-                  parts = match.groupdict()
-                  if all(parts.get(k) for k in ["uuid", "server", "port", "pbk"]):
-                      try:
-                          port_int = int(parts["port"])
-                          return {
-                              "uuid": parts["uuid"],
-                              "server": parts["server"],
-                              "port": port_int,
-                              "pbk": parts["pbk"],
-                              "fp": parts.get("fp", ""),
-                              "sni": parts.get("sni", ""),
-                              "alpn": parts.get("alpn", "h2,http/1.1"), 
-                              "original_config": config_str
-                          }
-                      except ValueError:
-                          return None
-              return None
-
-          def create_xray_config_file(config_data: Dict[str, Union[str, int, str]], config_path: str) -> bool:
-              """Creates a temporary Xray config file for a given VLESS Reality configuration."""
-              config_json = {
-                  "log": {
-                      "loglevel": "warning"
-                  },
-                  "inbounds": [
-                      {
-                          "port": XRAY_LOCAL_SOCKS_PORT,
-                          "protocol": "socks",
-                          "settings": {
-                              "auth": "noauth",
-                              "udp": True,
-                              "ip": "127.0.0.1"
-                          }
-                      },
-                      {
-                          "port": XRAY_LOCAL_HTTP_PORT,
-                          "protocol": "http",
-                          "settings": {
-                              "ip": "127.0.0.1"
-                          }
-                      }
-                  ],
-                  "outbounds": [
-                      {
-                          "protocol": "vless",
-                          "settings": {
-                              "vnext": [
-                                  {
-                                      "address": config_data["server"],
-                                      "port": config_data["port"],
-                                      "users": [
-                                          {
-                                              "id": config_data["uuid"],
-                                              "encryption": "none"
-                                          }
-                                      ]
-                                  }
-                              ]
-                          },
-                          "streamSettings": {
-                              "network": "tcp",
-                              "security": "reality",
-                              "realitySettings": {
-                                  "publicKey": config_data["pbk"],
-                                  "shortId": "", 
-                                  "fingerprint": config_data["fp"] if config_data["fp"] else "chrome", 
-                                  "serverNames": [config_data["sni"]] if config_data["sni"] else ["www.google.com"], 
-                                  "spiderX": ""
-                              },
-                              "tlsSettings": {
-                                  "serverName": config_data["sni"] if config_data["sni"] else "www.google.com",
-                                  "fingerprint": config_data["fp"] if config_data["fp"] else "chrome",
-                                  "alpn": config_data["alpn"].split(',') if config_data["alpn"] else ["h2", "http/1.1"]
-                              }
-                          }
-                      }
-                  ]
-              }
-              
-              try:
-                  with open(config_path, 'w') as f:
-                      json.dump(config_json, f, indent=2)
-                  return True
-              except IOError as e:
-                  safe_print(f"❌ Error writing Xray config file {config_path}: {e}")
-                  return False
-
-          def test_xray_config(config_data: Dict[str, Union[str, int, str]]) -> Optional[Dict[str, Union[str, int, str, float]]]:
-              """
-              Tests a single Xray configuration by running Xray core and attempting a curl request through it.
-              Returns the config data with latency if successful, None otherwise.
-              """
-              temp_config_file = f"xray_config_{os.getpid()}_{threading.get_ident()}.json"
-              
-              if not create_xray_config_file(config_data, temp_config_file):
-                  return None
-              
-              xray_process = None
-              try:
-                  # Start Xray core in the background
-                  xray_process = subprocess.Popen(
-                      ['xray', '-c', temp_config_file],
-                      stdout=subprocess.PIPE,
-                      stderr=subprocess.PIPE,
-                      text=True
-                  )
-                  
-                  # Wait for Xray to start (check for specific log messages or just wait)
-                  time.sleep(1) # Give it a moment to bind ports
-
-                  # Verify Xray process is running and not immediately crashed
-                  if xray_process.poll() is not None:
-                      stderr_output = xray_process.stderr.read()
-                      return None
-                  
-                  # Try to connect via HTTP proxy
-                  start_time = time.time()
-                  curl_command = [
-                      'curl',
-                      '-s',           # Silent mode
-                      '-o', '/dev/null', # Discard output
-                      '-w', '%{time_total}', # Output total time
-                      '--proxy', f'http://127.0.0.1:{XRAY_LOCAL_HTTP_PORT}',
-                      '--max-time', str(TEST_URL_TIMEOUT),
-                      '--retry', '1',  # Try once more if it fails
-                      '--retry-connrefused', # Retry if connection refused
-                      TEST_URL
-                  ]
-                  
-                  curl_result = subprocess.run(
-                      curl_command,
-                      capture_output=True,
-                      text=True,
-                      timeout=TEST_URL_TIMEOUT + 5 
-                  )
-                  
-                  latency = None
-                  if curl_result.returncode == 0:
-                      try:
-                          latency = float(curl_result.stdout.strip()) * 1000 # Convert to milliseconds
-                          if latency > 0: 
-                              config_data['real_latency_ms'] = latency
-                              return config_data
-                      except ValueError:
-                          pass
-
-              except subprocess.TimeoutExpired:
-                  if xray_process:
-                      xray_process.kill()
-                      xray_process.wait()
-                  return None
-              except Exception as e:
-                  return None
-              finally:
-                  if xray_process:
-                      xray_process.kill()
-                      xray_process.wait()
-                  if os.path.exists(temp_config_file):
-                      os.remove(temp_config_file)
-              return None
-
-          def main():
-              if not os.path.exists(INPUT_CONFIGS_FILE):
-                  safe_print(f"❌ Input file not found: {INPUT_CONFIGS_FILE}")
-                  sys.exit(1)
-
-              safe_print("🚀 Starting real VLESS Reality config testing...")
-              
-              try:
-                  with open(INPUT_CONFIGS_FILE, 'r', encoding='utf-8') as f:
-                      base64_content = f.read().strip()
-                  
-                  # --- کد رفع مشکل پدینگ ---
-                  base64_content_padded = base64_content + '==='[(len(base64_content) % 4):]
-                  decoded_content = base64.b64decode(base64_content_padded).decode('utf-8') 
-                  # --- پایان کد رفع مشکل پدینگ ---
-
-                  config_urls = decoded_content.split('\n')
-                  safe_print(f"Loaded {len(config_urls)} configs from {INPUT_CONFIGS_FILE}.")
-              except Exception as e:
-                  safe_print(f"❌ Error loading or decoding input file: {e}")
-                  sys.exit(1)
-
-              parsed_configs: List[Dict[str, Union[str, int, str]]] = []
-              for url in config_urls:
-                  parsed = parse_vless_config(url)
-                  if parsed:
-                      parsed_configs.append(parsed)
-              
-              safe_print(f"Parsed {len(parsed_configs)} VLESS Reality configs.")
-              
-              # فقط تعداد محدودی از بهترین کانفیگ‌ها را برای تست واقعی انتخاب می‌کنیم
-              configs_to_test = parsed_configs[:MAX_CONFIGS_FOR_REAL_TEST]
-              
-              working_configs: List[Dict[str, Union[str, int, str, float]]] = []
-              
-              total_tests = len(configs_to_test)
-              tested_count = 0
-              
-              max_concurrent_workers = min(os.cpu_count() or 4, 8) 
-              safe_print(f"Using {max_concurrent_workers} concurrent workers for real testing.")
-
-              with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_workers) as executor:
-                  futures = {executor.submit(test_xray_config, cfg): cfg for cfg in configs_to_test}
-                  
-                  for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                      result_config = future.result()
-                      if result_config:
-                          working_configs.append(result_config)
-                      
-                      tested_count += 1
-                      print_progress(tested_count, total_tests, prefix='Real Test Progress:', suffix='Complete')
-              
-              safe_print(f"\n✅ Found {len(working_configs)} truly working configs.")
-              
-              if working_configs:
-                  # Sort by real latency
-                  working_configs.sort(key=lambda x: x['real_latency_ms'])
-
-                  final_output_list: List[str] = []
-                  for i, cfg in enumerate(working_configs, start=1):
-                      # اینجا می‌توانید نامگذاری کانفیگ را بهبود دهید
-                      config_str = f"{cfg['original_config']}#Live_{i}_Latency_{cfg['real_latency_ms']:.0f}ms"
-                      final_output_list.append(config_str)
-
-                  # توجه: اینجا پدینگ برای خروجی نهایی حذف می‌شود که برای V2RayNG مناسب است
-                  subscription_text = "\n".join(final_output_list)
-                  base64_output = base64.b64encode(subscription_text.encode('utf-8')).decode('utf-8').replace('=', '')
-
-                  os.makedirs(os.path.dirname(OUTPUT_WORKING_CONFIGS_FILE), exist_ok=True)
-                  with open(OUTPUT_WORKING_CONFIGS_FILE, 'w', encoding='utf-8') as f:
-                      f.write(base64_output)
-                  
-                  safe_print(f"\n🎉 {len(working_configs)} truly working configs saved to {OUTPUT_WORKING_CONFIGS_FILE}")
-                  
-                  safe_print(f"🏆 Top 5 truly working configs (for log display):")
-                  for i, cfg in enumerate(working_configs[:5], start=1):
-                      safe_print(
-                          f"  {i}. {cfg['server']}:{cfg['port']} - "
-                          f"Real Latency: {cfg['real_latency_ms']:.2f}ms"
-                      )
-              else:
-                  safe_print("\n😥 No truly working configs found.")
-
-          if __name__ == "__main__":
-              main()
-          EOF
+        uuid, address, port, params_str, name = match.groups()
         
-      - name: Run Xray Tester Script
-        run: python xray_tester.py
+        params = {}
+        for param in params_str.split('&'):
+            if '=' in param:
+                key, value = param.split('=', 1)
+                params[key] = value
         
-      - name: Commit and Push working configs
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          file_pattern: data/secure_access_list.txt 
-          commit_message: "Auto-update: Xray real test results"
-          # مطمئن شوید که دسترسی Write در Settings -> Actions -> General -> Workflow permissions فعال باشد.
+        # Decode URL-encoded components if necessary (e.g., in sni, pbk, etc.)
+        for key, value in params.items():
+            try:
+                params[key] = requests.utils.unquote(value)
+            except Exception:
+                pass # Keep original if unquoting fails
+
+        # Handle 'host' parameter, which might be duplicated or used for SNI if 'sni' is missing
+        sni = params.get('sni')
+        if not sni:
+            # If SNI is not explicitly set, sometimes 'host' or the address itself is used.
+            # For Reality, 'sni' is crucial. If missing, it's likely invalid.
+            pass # Keep it as None, it will be checked later.
+
+        # Specific handling for pk/pbk based on common Reality formats
+        public_key = params.get('pbk') or params.get('pk')
+        if not public_key:
+            return None # Reality configs must have a public key
+
+        flow = params.get('flow', 'xtls-rprx-vision') # Default flow for Reality
+
+        config = {
+            "uuid": uuid,
+            "address": address,
+            "port": int(port),
+            "flow": flow,
+            "security": "reality",
+            "sni": sni,
+            "publicKey": public_key,
+            "shortId": params.get('sid'),
+            "fingerprint": params.get('fp', 'chrome'), # Default to chrome if not specified
+            "type": params.get('type', 'tcp'), # Default to tcp if not specified
+            "splice": params.get('splice') # Optional, for gRPC
+        }
+        return config
+    except Exception as e:
+        # print(f"Error parsing VLESS URL '{url}': {e}")
+        return None
+
+def create_xray_config(parsed_vless):
+    """Creates an Xray JSON configuration for a VLESS Reality inbound."""
+    if not parsed_vless:
+        return None
+
+    sni = parsed_vless.get('sni')
+    if not sni:
+        # print("Warning: SNI is missing for a Reality config. This might cause issues.")
+        # For Reality, SNI is almost always required.
+        return None
+
+    # Basic Xray config structure
+    xray_config = {
+        "log": {
+            "loglevel": "warning"
+        },
+        "inbounds": [
+            {
+                "port": 10808, # Arbitrary local port for testing
+                "listen": "127.0.0.1",
+                "protocol": "socks",
+                "settings": {
+                    "auth": "noauth",
+                    "udp": True,
+                    "ip": "127.0.0.1"
+                }
+            }
+        ],
+        "outbounds": [
+            {
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": parsed_vless["address"],
+                            "port": parsed_vless["port"],
+                            "users": [
+                                {
+                                    "id": parsed_vless["uuid"],
+                                    "encryption": "none",
+                                    "flow": parsed_vless["flow"]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": parsed_vless["type"],
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": f"{parsed_vless['address']}:{parsed_vless['port']}",
+                        "xver": 0,
+                        "serverNames": [sni],
+                        "publicKey": parsed_vless["publicKey"],
+                        "shortIds": [parsed_vless["shortId"]] if parsed_vless.get('shortId') else [],
+                        "fingerprint": parsed_vless.get('fingerprint'),
+                    }
+                }
+            }
+        ]
+    }
+
+    # Add transport settings based on network type
+    if parsed_vless["type"] == "tcp":
+        pass # No specific settings needed for plain TCP in streamSettings
+    elif parsed_vless["type"] == "grpc":
+        xray_config["outbounds"][0]["streamSettings"]["grpcSettings"] = {
+            "serviceName": parsed_vless.get('serviceName', ''),
+            "permitWithoutStream": parsed_vless.get('splice') == 'true' # Based on 'splice' parameter for gRPC
+        }
+    elif parsed_vless["type"] == "http":
+        # Placeholder for http transport, often used with h2 (TLS)
+        # Note: Reality with HTTP transport is less common than TCP/gRPC
+        pass
+
+    return json.dumps(xray_config, indent=2)
+
+def test_xray_config(xray_path, config_json):
+    """Tests an Xray configuration by running Xray with it."""
+    try:
+        # Write the config to a temporary file
+        with open("config.json", "w") as f:
+            f.write(config_json)
+
+        # Start Xray process
+        # Redirect stderr to stdout to capture all output
+        xray_process = subprocess.Popen(
+            [xray_path, "run", "-c", "config.json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        # Wait for a short period to allow Xray to start and potentially connect
+        time.sleep(2)
+
+        # Check if Xray is still running (i.e., didn't crash)
+        if xray_process.poll() is not None:
+            stdout, _ = xray_process.communicate(timeout=1)
+            # print(f"Xray process exited prematurely. Output:\n{stdout}")
+            return False, "Xray exited prematurely"
+
+        # Attempt to connect to the socks proxy to check if it's alive
+        # A simple connection attempt is often enough to indicate if the proxy is running
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5) # Set a timeout for the connection attempt
+            s.connect(("127.0.0.1", 10808)) # Connect to the local socks proxy
+            s.close()
+            # print("SOCKS proxy responded.")
+            is_working = True
+        except socket.error as e:
+            # print(f"Could not connect to SOCKS proxy: {e}")
+            is_working = False
+        finally:
+            # Terminate Xray process
+            xray_process.terminate()
+            try:
+                xray_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                xray_process.kill()
+                # print("Xray process killed after timeout.")
+
+        return is_working, "SOCKS proxy check" if is_working else "SOCKS proxy failed to respond"
+
+    except Exception as e:
+        # print(f"Error during Xray testing: {e}")
+        return False, str(e)
+
+if __name__ == "__main__":
+    xray_executable_path = os.environ.get('XRAY_PATH')
+    if not xray_executable_path:
+        print("Error: XRAY_PATH environment variable not set.")
+        exit(1)
+
+    print("🚀 Starting real VLESS Reality config testing...")
+
+    configs_file_path = "data/khanevadeh_base64.txt"
+    working_configs = []
+
+    if not os.path.exists(configs_file_path):
+        print(f"❌ Error: Input file '{configs_file_path}' not found.")
+        exit(1)
+
+    try:
+        with open(configs_file_path, 'r') as f:
+            base64_content = f.read().strip()
+    except Exception as e:
+        print(f"❌ Error loading or decoding input file: {e}")
+        exit(1)
+
+    # Decode the entire base64 content
+    try:
+        decoded_content = base64.b64decode(add_base64_padding(base64_content)).decode('utf-8')
+        vless_urls = decoded_content.split('\n')
+    except Exception as e:
+        print(f"❌ Error decoding base64 content from file: {e}. Raw content length: {len(base64_content)}")
+        print(f"Please check if '{configs_file_path}' contains valid and complete Base64 encoded data.")
+        exit(1)
+
+    if not vless_urls:
+        print("⚠️ No VLESS URLs found in the decoded content.")
+        exit(0)
+
+    print(f"✅ Found {len(vless_urls)} VLESS URLs to test.")
+
+    for i, url in enumerate(vless_urls):
+        url = url.strip()
+        if not url:
+            continue
+
+        print(f"Testing config {i+1}/{len(vless_urls)}: {url[:80]}...") # Show first 80 chars
+        parsed_config = parse_vless_url(url)
+        
+        if not parsed_config:
+            print(f"  ❌ Failed to parse URL: {url[:100]}...")
+            continue
+
+        xray_json = create_xray_config(parsed_config)
+        if not xray_json:
+            print(f"  ❌ Failed to create Xray config for: {url[:100]}...")
+            continue
+        
+        is_working, reason = test_xray_config(xray_executable_path, xray_json)
+        
+        if is_working:
+            print(f"  ✅ Config {i+1} is WORKING. ({reason})")
+            working_configs.append(url)
+        else:
+            print(f"  ❌ Config {i+1} is NOT WORKING. ({reason})")
+            
+    if working_configs:
+        print(f"\n🎉 Successfully identified {len(working_configs)} working configurations!")
+        with open("data/working_vless_reality_configs.txt", "w") as f:
+            for config in working_configs:
+                f.write(config + '\n')
+        print("Saved working configs to data/working_vless_reality_configs.txt")
+    else:
+        print("\n😔 No working VLESS Reality configurations found.")
+        
+    print("✅ Testing complete.")
+EOF
+          python xray_tester.py
