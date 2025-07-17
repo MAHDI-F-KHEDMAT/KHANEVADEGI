@@ -53,8 +53,8 @@ MIN_SUCCESSFUL_TESTS_RATIO: float = 0.7 # حداقل درصد تست‌های م
 QUICK_CHECK_TIMEOUT: int = 2 # تایم‌اوت برای تست اولیه سریع (Fast Fail)
 
 # محدودیت‌های تعداد کانفیگ‌ها
-MAX_CONFIGS_TO_TEST: int = 10000 
-FINAL_MAX_OUTPUT_CONFIGS: int = 500 
+MAX_CONFIGS_TO_TEST: int = 12000 
+FINAL_MAX_OUTPUT_CONFIGS: int = 600 
 
 # الگوهای Regex برای شناسایی و پارس کردن کانفیگ‌ها
 VLESS_REALITY_PATTERN: re.Pattern = re.compile(r'(vless://[^\s]+)', re.IGNORECASE)
