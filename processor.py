@@ -78,7 +78,8 @@ VLESS_PARSE_PATTERN: re.Pattern = re.compile(
     re.IGNORECASE
 )
 
-SEEN_IDENTIFIERS: Set[Tuple[str, int, str, str]] = set()
+# ✅ تغییر اول: نوع داده شناسه یکتا اصلاح شد تا فقط شامل سرور، پورت و uuid باشد
+SEEN_IDENTIFIERS: Set[Tuple[str, int, str]] = set()
 
 # --- توابع کمکی (Helper Functions) ---
 
@@ -174,11 +175,11 @@ def process_subscription_content(content: str, source_url: str) -> List[Dict[str
             parsed_data = parse_vless_config(line)
             
             if parsed_data:
-                identifier: Tuple[str, int, str, str] = (
+                # ✅ تغییر دوم: شناسه یکتا برای هماهنگی با v2rayNG اصلاح شد
+                identifier: Tuple[str, int, str] = (
                     parsed_data["server"], 
                     parsed_data["port"], 
-                    parsed_data["uuid"], 
-                    parsed_data["pbk"]
+                    parsed_data["uuid"]
                 )
                 
                 if identifier not in SEEN_IDENTIFIERS:
@@ -206,7 +207,7 @@ def gather_configurations(links: List[str]) -> List[Dict[str, Union[str, int]]]:
             # اینجا فقط یک نوار پیشرفت کلی برای این مرحله نمایش داده می شود
             print_progress(i + 1, total_links, prefix='پیشرفت دریافت و پردازش:', suffix='تکمیل شد')
     
-    safe_print(f"\n✨ مجموع کانفیگ‌های Reality یکتا جمع‌آوری شده: {len(all_configs)}")
+    safe_print(f"\n✨ مجموع کانفیگ‌های یکتا (بر اساس منطق v2rayNG) جمع‌آوری شده: {len(all_configs)}")
     return all_configs
 
 # --- توابع تست کیفیت (Quality Testing Functions) ---
