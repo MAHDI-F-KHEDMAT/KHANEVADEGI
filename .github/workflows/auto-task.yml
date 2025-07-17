@@ -1,37 +1,50 @@
-name: Automated Data Processing 
+name: Automated Data Processing
 
 on:
-  workflow_dispatch: # این خط به شما اجازه میده که ورک‌فلو رو به صورت دستی از تب Actions در گیت‌هاب اجرا کنید.
   schedule:
-    - cron: '0 */6 * * *' # این خط ورک‌فلو رو هر 6 ساعت یک بار (در دقیقه 0 از هر 6 ساعت) به صورت خودکار اجرا می‌کنه.
+    - cron: '0 */6 * * *' # Run every 6 hours
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  build:
-    runs-on: ubuntu-latest # از آخرین نسخه سیستم عامل اوبونتو برای اجرای این کار استفاده می‌کنه.
-    
+  process_data_job:
+    runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4 # کدهای ریپازیتوری شما رو دانلود می‌کنه.
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5 # محیط پایتون رو تنظیم می‌کنه.
-      with:
-        python-version: '3.x' # از آخرین نسخه پایتون 3 استفاده می‌کنه.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip # ابزار pip رو به‌روزرسانی می‌کنه.
-        pip install requests # کتابخانه requests رو نصب می‌کنه که اسکریپت پایتون بهش نیاز داره.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests # If your process_configs.py uses requests
 
-    - name: Run Data Processor 
-      run: |
-        python processor.py # اسکریپت پایتون شما (processor.py) رو اجرا می‌کنه.
+      - name: Run Data Processor
+        run: |
+          mkdir -p data
+          # Fetch the Base64 content from the subscription URL directly
+          # Using curl -sS -L to silently follow redirects and show errors
+          curl -sS -L "${{ secrets.SUBSCRIPTION_URL }}" > data/khanevadeh_base64.txt
+          echo "Fetched configs to data/khanevadeh_base64.txt"
+          
+          # --- Debugging Output ---
+          echo "Debugging output for data/khanevadeh_base64.txt:"
+          ls -l data/khanevadeh_base64.txt # Check file size
+          echo "--- First 10 lines of khanevadeh_base64.txt ---"
+          head -n 10 data/khanevadeh_base64.txt # Show first 10 lines
+          echo "--- Last 10 lines of khanevadeh_base64.txt ---"
+          tail -n 10 data/khanevadeh_base64.txt # Show last 10 lines
+          echo "--- End of debugging output ---"
 
-    - name: Commit and Push changes
-      uses: stefanzweifel/git-auto-commit-action@v5 # این اکشن به صورت خودکار تغییرات ایجاد شده توسط اسکریپت رو کامیت و پوش می‌کنه.
-      with:
-        commit_user_name: GitHub Actions Bot
-        commit_user_email: actions@github.com
-        commit_author: GitHub Actions Bot <actions@github.com>
-        commit_message: "Auto-update: Data processing results" # پیامی که برای کامیت نمایش داده میشه.
-        file_pattern: 'data/*.txt' # **این خط بسیار مهمه!** به گیت‌هاب اکشنز میگه که فایل‌های `.txt` رو که در پوشه **`data`** قرار دارند، کامیت و پوش کنه.
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update: Data processing results"
+          file_pattern: data/*.txt
+          # It's important to commit even if there's no change for subsequent workflows to pick up
+          # However, for efficiency, you might want to only commit if there are actual changes
+          # For now, let's keep it simple to ensure the file is pushed.
