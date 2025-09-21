@@ -26,6 +26,8 @@ OUTPUT_DIR = "data"
 CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/PlanAsli/configs-collector-v2ray/refs/heads/main/sub/protocols/vless.txt",
     "https://raw.githubusercontent.com/itsyebekhe/PSG/main/subscriptions/xray/base64/mix",
+
+"https://raw.githubusercontent.com/RaitonRed/ConfigsHub/refs/heads/main/Splitted-By-Protocol/vless.txt",
     "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/Protocols/vless.txt",
     "https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/refs/heads/main/configs/Vless.txt",
     "https://www.v2nodes.com/subscriptions/country/all/?key=F225BC16D80D287",
@@ -41,6 +43,10 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/MAHDI-F-KHEDMAT/KHANEVADEGI/refs/heads/main/data/khanevadeh_base64.txt",
     "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/vless.html",
     "https://raw.githubusercontent.com/Pasimand/v2ray-config-agg/refs/heads/main/config.txt",
+
+"https://raw.githubusercontent.com/crackbest/V2ray-Config/refs/heads/main/config.txt",
+
+"https://raw.githubusercontent.com/barry-far/V2ray-Config/refs/heads/main/Splitted-By-Protocol/vless.txt"
     
 ]
 
