@@ -40,7 +40,13 @@ CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/vless.html",
     "https://raw.githubusercontent.com/Pasimand/v2ray-config-agg/refs/heads/main/config.txt",
     "https://raw.githubusercontent.com/crackbest/V2ray-Config/refs/heads/main/config.txt",
-    "https://raw.githubusercontent.com/barry-far/V2ray-Config/refs/heads/main/Splitted-By-Protocol/vless.txt"
+    "https://raw.githubusercontent.com/barry-far/V2ray-Config/refs/heads/main/Splitted-By-Protocol/vless.txt",
+
+"https://raw.githubusercontent.com/giromo/Xrey-collector/refs/heads/main/All_Configs_Sub.txt",
+
+"https://raw.githubusercontent.com/dream4network/telegram-configs-collector/refs/heads/main/splitted/mixed",
+
+"https://raw.githubusercontent.com/Matin-RK0/ConfigCollector/refs/heads/main/subscription.txt"
     
 ]
 
