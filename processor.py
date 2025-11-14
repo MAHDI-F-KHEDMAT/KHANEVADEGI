@@ -25,6 +25,7 @@ OUTPUT_DIR = "data"
 # مثال: "https://YOUR-USERNAME.github.io/KHANEVADEGI/data/khanevadeh_base64.txt"
 CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/itsyebekhe/PSG/main/subscriptions/xray/base64/mix",
+"https://raw.githubusercontent.com/Leon406/SubCrawler/refs/heads/main/sub/share/vless",
 "https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/soliSpirit/normal",
 "https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/psgV6/normal",
 "https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/psgMix/normal",
