@@ -25,6 +25,18 @@ OUTPUT_DIR = "data"
 # مثال: "https://YOUR-USERNAME.github.io/KHANEVADEGI/data/khanevadeh_base64.txt"
 CONFIG_URLS: List[str] = [
     "https://raw.githubusercontent.com/itsyebekhe/PSG/main/subscriptions/xray/base64/mix",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/soliSpirit/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/psgV6/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/psgMix/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/parvinXs/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/matinGh/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/mahsaXray/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/hamedP/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/gameFssociety/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/darkProxy/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/daniSamadi/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/code3Vless/normal",
+"https://raw.githubusercontent.com/ircfspace/XraySubRefiner/refs/heads/main/export/amirAlter/normal",
 "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector_Py/refs/heads/main/sub/Mix/mix.txt",
 "https://raw.githubusercontent.com/T3stAcc/V2Ray/refs/heads/main/Splitted-By-Protocol/vless.txt",
 "https://raw.githubusercontent.com/F0rc3Run/F0rc3Run/refs/heads/main/splitted-by-protocol/vless.txt",
